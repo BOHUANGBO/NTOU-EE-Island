@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>海大電機・3D 學程島</title>
+<style>
+:root{--bg:#f4f8fb;--card:#fff;--tx:#17324a;--mut:#5d7488;--ln:#d5e2ec;--ac:#0e7fa8;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1b26;--card:#16293a;--tx:#e4eef6;--mut:#93aabd;--ln:#2a4256;--ac:#4fc3e8}}
+:root[data-theme="dark"]{--bg:#0d1b26;--card:#16293a;--tx:#e4eef6;--mut:#93aabd;--ln:#2a4256;--ac:#4fc3e8}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;line-height:1.6}
+header{padding:10px 14px 2px;text-align:center}
+h1{font-size:1.25rem;margin:0}
+header p{margin:0;color:var(--mut);font-size:.8rem}
+main{max-width:1000px;margin:0 auto;padding:6px 10px 24px;display:grid;gap:10px}
+#stage{position:relative;height:min(58vh,520px);min-height:300px;border-radius:16px;overflow:hidden;border:1px solid var(--ln);background:#7fd0ee;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#hud{position:absolute;left:8px;top:8px;display:flex;gap:4px;flex-wrap:wrap;max-width:75%}
+#where{position:absolute;right:8px;top:8px;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;padding:2px 12px;font-size:.82rem}
+button{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--ln);border-radius:999px;padding:2px 12px;cursor:pointer;font-size:.85rem}
+button[aria-pressed="true"]{background:var(--ac);color:#fff;border-color:var(--ac)}
+#panel{background:var(--card);border:1px solid var(--ln);border-radius:14px;padding:14px}
+#panel h2{margin:0 0 4px;font-size:1.15rem}
+#say{background:var(--bg);border-radius:10px;padding:8px 12px;margin:6px 0;border-left:4px solid var(--ac)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+ul{list-style:none;margin:0;padding:0;display:grid;gap:6px;grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+li{border:1px solid var(--ln);border-radius:10px;padding:5px 10px;display:flex;justify-content:space-between;gap:8px}
+li small{color:var(--mut);white-space:nowrap}
+li.g{border-style:dashed}li.core{border-color:var(--ac);border-width:2px}
+.pill{display:inline-block;border:1px solid var(--ln);border-radius:8px;padding:1px 8px;margin:2px;font-size:.85rem}
+.note{color:var(--mut);font-size:.8rem;margin-top:8px}
+h3{font-size:.95rem;margin:12px 0 4px}
+</style>
+</head>
+<body>
+<header><h1>🍯 海大電機・蜂巢學程島</h1><p>點地面讓小人走過去；走過橋到不同的島，就會顯示該組簡介與課程規劃</p></header>
+<main>
+<div id="stage">
+<canvas id="c"></canvas>
+<div id="hud"></div><div id="where">🚶 海邊</div>
+</div>
+<section id="panel" aria-live="polite"></section>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const Y=[
+[[['國文',2,1],['大一英文',2,1],['人工智慧概論',2,1],['微積分',4],['普通物理',3],['程式設計',3],['程式設計實習',1],['交換電路與邏輯設計',3],['交換電路與邏輯設計實驗',1]],[['國文',2,1],['大一英文',2,1],['海洋科學概論',2,1],['微積分',4],['普通物理',3],['微處理機概論',3],['微處理機實驗',1],['電路學（一）',3],['工程數學（Ⅰ）',3]]],
+[[['進階英文',2,1],['博雅課程',4,1],['電路學（二）',3],['電子學（一）',3],['電子學實驗（一）',1],['工程數學（Ⅱ）',3],['線性代數',3],['電磁學',3]],[['博雅課程',4,1],['電子學（二）',3],['電子學實驗（二）',1],['電磁波',3],['機率學',3],['訊號與系統',3],['核心課程（六選三之一）',3,2]]],
+[[['博雅課程',4,1],['電子學（三）',3],['電子學實驗（三）',1],['核心課程（六選三之一）',3,2]],[['博雅課程',2,1],['專題研究（Ⅰ）',2],['核心課程（六選三之一）',3,2]]],
+[[['專題研究（Ⅱ）',2]],[['必修已修畢，以選修學分自由安排',0,2]]]];
+const YC=['#ef6c57','#f0a63a','#4cae6a','#7a63d6'],YN=['大一','大二','大三','大四'];
+const G=[
+{k:'資訊科技',i:'💻',c:0x3b82f6,core:'資料結構',pre:['程式設計','微處理機概論','交換電路與邏輯設計'],d:'旨在培育下一代二十一世紀的資訊科技人才，強調整合電腦、演算法、大數據、人工智慧、物聯網，並加強實作應用之能力，以配合國家資訊科技產業發展趨勢。',l:[],s:'「資料結構」是進入這一組的核心鑰匙，程式與數位邏輯打得越穩，後面越順。'},
+{k:'電波',i:'📶',c:0xa855f7,core:'複變函數',pre:['電磁學','電磁波','工程數學'],d:'旨在培養 VLSI、類比電路、高頻電路、電磁相容、天線設計、微波電路等製造設計人才，並注重理論與實作的驗證。課程依單晶片系統（SoC）趨勢，規劃 VLSI 設計、類比電路設計、積體電路設計、元件特性模擬等領域，為電腦、通訊、固態電子及消費性電子等產業培育電子電路設計人才。',l:[],s:'先把電磁學、電磁波學扎實，再配「複變函數」的數學工具。'},
+{k:'固態電子',i:'🔬',c:0x14b8a6,core:'半導體物理',pre:['電子學','電磁學','普通物理'],d:'以固態工程為核心，重點涵蓋半導體元件及製程、薄膜元件、微（光）機電及高功率積體元件等範圍。專業實驗課程以製造簡單的元件為主，並開發相關的製程模組，讓學生體驗微電子工程的實作精神。',l:['光電轉換導論','光電元件','太陽能電池','太陽能光伏電子應用專題','化合物半導體工程元件','奈米微米元件製程與模擬','微光機電感測工程','能量轉換元件特性分析與模擬'],s:'由「半導體物理」開始，往元件與製程走。'},
+{k:'電力與電子電路',i:'⚡',c:0xf59e0b,core:'電機機械',pre:['電路學','電子學','電子學實驗'],d:'旨在培養電機電力工程科技專業人才，課程以電能元件與系統為核心，涵括電機機械、電力系統與電力電子三項重點領域，遵循理論學習與實驗實習並重、基礎知識與先進工程實務兼顧的教學原則。',l:['電力電子學','電源供應器設計','電力電子積體電路設計','類比積體電路設計','電子設計自動化','超大型積體電路設計','超大型積體電路技術','電力系統分析與動態分析','電力系統控制與穩定','電力系統規劃與運轉、調度','保護電驛','電能系統分析實驗'],s:'從「電機機械」入門，再看你想走電力系統還是電路設計。'},
+{k:'控制',i:'🤖',c:0xef4444,core:'自動控制',pre:['線性代數','工程數學','訊號與系統'],d:'以自動控制理論為基礎，結合電子、電腦、感測、機械等技術，發展系統與工程的整合技術。教導古典、現代、數位等基礎控制理論，以及控制器設計與實現製作技術，使學生能實際進行控制系統分析、電腦輔助設計與控制器製作。',l:['現代控制理論','多變數控制系統','非線性系統分析','適應控制','切換控制系統','網路控制系統','矩陣理論與運用','模糊系統','作業研究'],s:'「自動控制」是起點，線性代數與訊號與系統是好幫手。'},
+{k:'通訊與訊號處理',i:'📡',c:0x06b6d4,core:'通訊工程',pre:['機率學','訊號與系統','工程數學'],d:'旨在培養能因應飛速發展的通訊產業需求之人才。學程規劃遵循實驗與理論並重、通訊科技基礎課程訓練與尖端學科兼顧的教學原則。',l:['數位訊號處理','數位通訊系統','行動通訊系統','無線通訊','通訊系統設計與模擬','時頻分析','適應訊號處理','信號偵測與估計','聲納訊號處理','電資醫學概論','健康照護醫療應用專題'],s:'「通訊工程」之前，先把機率學和訊號與系統學好。'}];
+const R0=11,R1=9,AP0=R0*Math.cos(Math.PI/6),AP1=R1*Math.cos(Math.PI/6),DD=AP0+AP1+8;
+const Z=[{k:'必修課區',i:'📘',c:0x64748b,x:0,z:0}].concat(G.map((g,n)=>{const a=(30+60*n)*Math.PI/180;return{...g,x:Math.sin(a)*DD,z:Math.cos(a)*DD,g:n}}));
+
+const LB={
+'通訊與訊號處理':[
+{n:'林進豐',L:[{t:'行動醫療資訊實驗室',loc:'EE1-616',ext:'6240',i:'前身為通訊系統晶片設計實驗室，民國 93 年 8 月成立，早期研究無線多媒體通訊、低功率通訊基頻晶片設計與水下多媒體通訊技術；99 年 10 月更名。累計培育 27 位碩士與 12 位學士專題畢業生。',r:'行動醫療資訊、生醫訊號處理（混沌加密、希爾伯特黃生醫訊號時頻）',e:'PXA300 嵌入式平台、微處理機發展系統、影音通訊傳輸與接收平台、微電腦感測實驗裝置、多功能生理量測裝置、心電圖機與訊號產生器、射頻調變器、時頻分析與訊號分析軟體'}]},
+{n:'盧晃瑩',L:[{t:'無線通訊實驗室',loc:'EE2-420',ext:'6227'}]},
+{n:'曾敬翔',L:[{t:'數位通訊實驗室',loc:'EE2-513',ext:'6266',r:'非線性訊號處理、非線性系統鑑定、高階統計訊號處理、軟體定義無線電、姿態辨識技術、水下聲波通訊、噴墨列印技術',e:'射頻訊號產生器、頻譜分析儀、任意函數產生器、色度儀、多通道資料記錄器、數位訊號處理器發展系統、FPGA 發展系統'},{t:'水下通訊實驗室',loc:'EE1-105',r:'非線性訊號處理、非線性系統鑑定、高階統計訊號處理、軟體定義無線電、姿態辨識技術、水下聲波通訊、噴墨列印技術',e:'射頻訊號產生器、頻譜分析儀、任意函數產生器、色度儀、多通道資料記錄器、數位訊號處理器發展系統、FPGA 發展系統'}]},
+{n:'李晃昌',L:[{t:'無線通訊實驗室',loc:'EE2-316',ext:'6244',r:'穩健通訊'}]}],
+'控制':[
+{n:'吳政郎',L:[{t:'網路控制實驗室',loc:'EE2-617',ext:'6272',i:'探討多封包傳輸之網路控制器設計、低資料傳輸量之網路控制器設計，以及無線網路控制系統。',r:'網路控制系統、非線性系統同時控制、切換控制系統、磁浮系統',e:'個人電腦、直流無刷馬達控制模組、DSP Starter Kit、蜘蛛型機器人、示波器、電磁波偵測器、高斯表、渦電流式位移計、資料擷取模組、嵌入式控制器、線性致動器、音圈馬達模組、超音波監視模組等'}]},
+{n:'許駿飛',L:[{t:'智慧控制實驗室',loc:'EE1-401',ext:'6246',i:'專注機器人與無人機的自主控制與智慧化技術，涵蓋感知、規劃、決策與控制，結合人工智慧演算法與先進控制，提升系統在動態與未知環境中的適應能力、穩定性與決策能力。',r:'智慧型控制（模糊理論與類神經網路）、高機動性機器人設計與控制、自平衡無人機設計與控制、多機協作與群體智能演算法',e:'個人電腦、嵌入式控制器、自主移動機器人平台、無人機測試平台、高精度 IMU 感測模組、深度相機與 LiDAR 感測器'}]},
+{n:'鄭智湧',L:[{t:'非線性控制實驗室',loc:'EE2-413',ext:'6256',i:'主要研究強健與非線性控制，並將理論應用於電腦週邊系統與機器人的控制。',e:'馬達控制模組、DSP、Zigbee 通訊模組、電路板雕刻機、高速攝影機、FPGA、Android 智慧手機、二輪差速式移動平台、四軸飛行器、BIOLOID 機器人'}]}],
+'資訊科技':[
+{n:'鄭慕德',L:[{t:'嵌入式與自動化實驗室',loc:'EE1-501',ext:'6228',i:'嵌入式系統在消費性電子與網路通訊產品帶動下快速發展，本實驗室以「嵌入式作業系統」為主軸發展相關軟體技術，培育具實作能力、創新設計與軟硬體整合能力的人才。'}]},
+{n:'王榮華',L:[{t:'軟性計算實驗室',loc:'EE1-503',ext:'6229',i:'軟性計算是人工智慧的一支，包含神經網路、模糊理論、遺傳演算法等技術，應用於模式識別與影像處理。實驗室成立於 1992 年，原名神經網絡實驗室，1999 年改為現名。'},{t:'人工智慧實驗室（系級 AI 研究中心）',loc:'EE2-613',ext:'6229',i:'研究如何用電腦完成原本須由人類執行的工作，讓機器具備學習、推理、判斷解決問題、知識儲存與理解自然語言等能力。'}]},
+{n:'李東霖',L:[{t:'智慧生活科技實驗室',loc:'EE1-505',ext:'6230',i:'結合人工智慧、電腦視覺與物聯網技術，建立自動化系統解決生活中的實際問題；以電腦視覺與物聯網感測蒐集資訊，再由 AI 自主學習提出自動化解決方案。'}]},
+{n:'曾韻華',L:[{t:'研究室',loc:'EE1-401',ext:'6246'}]}],
+'電力與電子電路':[
+{n:'江明勳',L:[{t:'機動研究室',loc:'EE1-301',ext:'6224',r:'再生能源（資料尚未完整）'}]},
+{n:'陳堃峯',L:[{t:'智慧電能系統研究室',loc:'EE1-620',ext:'6258'}]}],
+'電波':[
+{n:'林俊華',L:[{t:'電磁實驗室',loc:'EE2-416',ext:'6238',i:'研究電磁現象，並發展快速且精確的演算法，利用電腦處理複雜的電磁問題。電磁模擬在微波積體電路（MICs）的電磁現象、遙測、電磁干擾（EMI）、雷達截面積（RCS）分析、天線設計與應用、微波影像與超音波成像等領域都扮演重要角色。特色是要發展有效的演算法，必須全盤了解電磁問題的特性，並具備電磁學、物理學、數學與程式語言等知識。',r:'逆散射（Inverse Scattering）、積分方程、有限差分法、快速計算法、平行處理'}]},
+{n:'吳宗達',L:[{t:'微波遙測實驗室',loc:'EE2-615',ext:'6263'}]},
+{n:'張立奇',L:[{t:'毫米波天線設計實驗室',loc:'EE2-417',ext:'6222'}]},
+{n:'林文傑',L:[{t:'毫米波積體電路設計實驗室',loc:'EE2-314R',ext:'6267'}]}],
+'固態電子':[
+{n:'羅文雄',L:[{t:'半導體實驗室',loc:'EE1-302',ext:'6265',i:'重視實驗課以強化實作能力；希望學生透過參與研究計畫，學習構思、分析、研判、設計、模擬等步驟，培養獨立思考、研究規劃與創新設計能力。短期目標著重實務性的研究與教學，使學生習得電機相關產業所需的技能與專業知識；長期目標是培養具國際觀、有國際競爭力的電機專業人才。',e:'高溫長晶爐、無電極電鍍系統、半導體分析儀、電化學分析儀、溫度控制氫氣量測系統、熱蒸鍍機、IV 量測儀、曝光機、旋塗機、蝕刻台、軟式與硬式烤箱'},{t:'黃光實驗室',loc:'EE1-106',ext:'6248',i:'重視實驗課以強化實作能力；希望學生透過參與研究計畫，學習構思、分析、研判、設計、模擬等步驟，培養獨立思考、研究規劃與創新設計能力。短期目標著重實務性的研究與教學，使學生習得電機相關產業所需的技能與專業知識；長期目標是培養具國際觀、有國際競爭力的電機專業人才。',e:'高溫長晶爐、無電極電鍍系統、半導體分析儀、電化學分析儀、溫度控制氫氣量測系統、熱蒸鍍機、IV 量測儀、曝光機、旋塗機、蝕刻台、軟式與硬式烤箱'}]},
+{n:'張忠誠',L:[{t:'奈微米積體感測元件實驗室',loc:'EE1-304',ext:'6223'},{t:'水下技術實驗室',loc:'EE1-107',ext:'6223'}]},
+{n:'張巧芸',L:[{t:'奈米光子半導體實驗室',loc:'EE2-307',ext:'6214',i:'致力於半導體光電元件、二維材料、奈米表面電漿、發光二極體等研究，探討微米與奈米尺度下的光電特性，並展望奈米光子學與量子領域的前瞻發展。',r:'微米發光二極體（Micro-LED）應用於可見光通訊、二維單層半導體材料特性與光電元件、奈米電漿元件、光電晶體'}]},
+{n:'許益捷',L:[{t:'類比積體電路與系統實驗室',loc:'EE1-516R',ext:'6243',i:'培養學生具備類比積體電路設計與實作能力，畢業後能進入 IC 設計相關產業。',r:'類比積體電路設計、電源管理積體電路設計'}]}]};
+const CH={n:'譚仕煒（系主任）',L:[{t:'前瞻元件與系統實驗室（固態電子組）',loc:'EE1-602、EE2-517',ext:'6216'}]};
+function lab(p,gi){
+const f=(a,b)=>b?`<p><b>${a}：</b>${b}</p>`:'';
+$('#panel').innerHTML=`<h2>🧑‍🔬 ${p.n}</h2><button data-back="1">← 返回</button>`+p.L.map(l=>`<h3>${l.t}</h3>${f('位置',l.loc)}${f('分機',l.ext)}${f('實驗室簡介',l.i)}${f('研究方向',l.r)}${f('實驗室設備',l.e)}${l.i||l.r?'':'<p class="note">這間實驗室的簡介尚未提供。</p>'}`).join('')+'<p class="note">資料來源：電機系研究實驗室簡介。</p>';
+$('#panel').querySelector('[data-back]').onclick=()=>cur?enter(cur):welcome();
+}
+// ---- panel
+let yr=0,sem=0;
+function say(t){const e=$('#say');if(e)e.textContent=t}
+function req(){
+const L=Y[yr][sem],tot=L.reduce((a,c)=>a+c[1],0);
+$('#panel').innerHTML=`<h2>📘 必修課區</h2><div id="say"></div><p>四年共 136 學分：必修 112（含核心課程 15）＋選修至少 24。共同課程含國文、外文、歷史、憲政、博雅、體育與勞動服務。</p><div class="tabs">${YN.map((n,i)=>`<button aria-pressed="${i===yr}" data-y="${i}">${n}</button>`).join('')}<span style="width:10px"></span>${['上學期','下學期'].map((n,i)=>`<button aria-pressed="${i===sem}" data-s="${i}">${n}</button>`).join('')}</div><ul>${L.map(c=>`<li class="${c[2]===2?'g':''}"><span>${c[0]}</span><small>${c[2]===1?'共同・':c[2]===2?'選修・':'必修・'}${c[1]}學分</small></li>`).join('')}</ul><p><b>${YN[yr]}${sem?'下':'上'}學期必修合計 ${tot} 學分</b></p><p class="note">核心課程六選三：資料結構、複變函數、半導體物理、電機機械、自動控制、通訊工程，各對應下方一個組別。外系選修不超過 12 學分（電資學院以外不超過 6 學分）。</p>`;
+say(`譚仕煒（系主任）導覽｜這裡是${YN[yr]}的必修課區，基礎打穩，走過六座橋到哪一組都不怕。`);
+$('#panel').querySelectorAll('[data-y]').forEach(b=>b.onclick=()=>{yr=+b.dataset.y;setAvatar();req()});
+$('#panel').querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{sem=+b.dataset.s;req()});
+}
+function grp(g){
+$('#panel').innerHTML=`<h2>${g.i} ${g.k}組</h2><div id="say"></div><p>${g.d}</p><h3>核心課程（六選三）</h3><ul><li class="core"><span>${g.core}</span><small>核心</small></li></ul>${(LB[g.k]||[]).length?`<h3>實驗室</h3><p>島上的 ${(LB[g.k]).length} 位老師（小人）各自帶領實驗室，點選小人即可看實驗室簡介。</p>`:'<h3>實驗室</h3><p class="note">這一組的實驗室資料尚未提供。</p>'}<h3>建議先備的必修</h3>${g.pre.map(x=>`<span class="pill">${x}</span>`).join('')}<h3>進階延伸課程</h3>${g.l.length?g.l.map(x=>`<span class="pill">${x}</span>`).join(''):'<p class="note">這一組的選修課程資料還沒有提供，補上課程名單後會顯示在這裡。</p>'}<p class="note">先備課程與核心對應為依課程性質整理的建議；延伸課程取自碩士班課程關聯圖，實際修課請以系上公告為準。</p>`;
+say(`歡迎來到${g.k}組！${g.s}`);
+}
+function enter(z){z.g==null?req():grp(G[z.g]);$('#where').textContent=z.i+' '+z.k}
+// ---- 3D
+const cv=$('#c'),R=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+R.setPixelRatio(Math.min(devicePixelRatio,2));
+const S=new THREE.Scene();S.background=new THREE.Color(0x7fd0ee);S.fog=new THREE.Fog(0x7fd0ee,50,110);
+const cam=new THREE.PerspectiveCamera(50,1,1,250);
+S.add(new THREE.HemisphereLight(0xffffff,0x5a8a5a,.95));
+const sun=new THREE.DirectionalLight(0xffffff,.6);sun.position.set(20,40,10);S.add(sun);
+const M=c=>new THREE.MeshLambertMaterial({color:c});
+const add=(g,c,x,y,z,p=S)=>{const m=new THREE.Mesh(g,M(c));m.position.set(x,y,z);p.add(m);return m};
+const rad=d=>d*Math.PI/180,DIR=k=>[Math.sin(rad(30+60*k)),Math.cos(rad(30+60*k))];
+add(new THREE.CylinderGeometry(160,160,.2,48),0x2c8fc4,0,-1.2,0);
+function label(t,s=1,w=8){const c=document.createElement('canvas');c.width=512;c.height=128;const x=c.getContext('2d');x.font='bold 54px sans-serif';x.textAlign='center';x.lineWidth=10;x.strokeStyle='#0b4a66';x.strokeText(t,256,80);x.fillStyle='#fff';x.fillText(t,256,80);const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));sp.scale.set(w*s,2*s,1);return sp}
+
+const OB=[],ANIM=[],DS=THREE.DoubleSide,LOGOMATS=[];
+const LOGO='data:image/png;base64,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';
+{const im=new Image();im.onload=()=>{const tx=new THREE.Texture(im);tx.needsUpdate=true;LOGOMATS.forEach(m=>{m.map=tx;m.needsUpdate=true})};im.src=LOGO}
+function build(z,n){
+const cx=z.x,cz=z.z,T=THREE;
+const B=(geo,col,x,y,zz)=>add(geo,col,cx+x,.6+y,cz+zz);
+const ob=(x,zz,r)=>OB.push({x:cx+x,z:cz+zz,r});
+const grp=(x,y,zz)=>{const g=new T.Group();g.position.set(cx+x,.6+y,cz+zz);S.add(g);return g};
+const ga=(g,geo,col,x,y,zz)=>add(geo,col,x,y,zz,g);
+const cyl=(a,b,h,s=12)=>new T.CylinderGeometry(a,b,h,s),box=(a,b,c)=>new T.BoxGeometry(a,b,c);
+const wire=m=>{m.material.wireframe=true;return m};
+const e=rad(30+60*(n-1)+180),sl=i=>{const a=e+rad(60*i);return[Math.sin(a)*5.2,Math.cos(a)*5.2]};
+for(let k=0;k<6;k++){const a=rad(60*k),r=n?8:8.6,x=Math.sin(a)*r,y=Math.cos(a)*r;add(cyl(.2,.3,1.2,6),0x7a5230,cx+x,1.1,cz+y);add(new T.ConeGeometry(1.2,2.8,7),0x2f8f4e,cx+x,3.1,cz+y);ob(x,y,n?.6:.7)}
+if(n==0){B(cyl(1.5,1.7,.5),0x94a3b8,0,.25,0);B(cyl(1.1,1.3,4.6),0xe2e8f0,0,2.8,0);B(new T.ConeGeometry(1.6,1.6,12),0x64748b,0,6.3,0);
+const lm=new T.MeshBasicMaterial({color:0xffffff,transparent:true});LOGOMATS.push(lm);for(let q=0;q<4;q++){const f=q*Math.PI/2,pl=new T.Mesh(new T.CircleGeometry(.95,40),lm);pl.position.set(cx+Math.sin(f)*1.26,.6+3.3,cz+Math.cos(f)*1.26);pl.rotation.y=f;S.add(pl)}
+B(new T.SphereGeometry(.35,12,10),0xfde047,0,7.3,0);ob(0,0,1.8)}
+if(n==1){for(const[x,y]of[[-1,-.6],[1,-.6],[0,.9]]){B(box(1.3,3.6,1.3),0x1e293b,x,2.4,y);for(let j=0;j<5;j++)B(box(.9,.1,.05),j%2?0x22c55e:0x38bdf8,x,1.2+j*.6,y+.68);ob(x,y,.85)}
+const[dx,dz]=sl(3);B(box(3,.15,1.4),0x8b6b4a,dx,1.1,dz);for(const x of[-1.3,1.3])for(const q of[-.5,.5])B(box(.15,1.1,.15),0x5b4630,dx+x,.55,dz+q);B(box(1.5,.95,.1),0x0f172a,dx,1.95,dz-.3);const sc=B(box(1.35,.8,.05),0x38bdf8,dx,1.95,dz-.23);ANIM.push(t=>sc.material.color.setHSL(.55+Math.sin(t)*.05,.9,.55));ob(dx-.8,dz,.85);ob(dx+.8,dz,.85)}
+if(n==2){wire(B(new T.ConeGeometry(1.5,8,4),0xe9d5ff,0,4,0));B(cyl(.1,.1,8.6,6),0xcbd5e1,0,4.3,0);B(new T.SphereGeometry(.3,10,8),0xef4444,0,8.7,0);ob(0,0,1.4);
+const[dx,dz]=sl(2);B(cyl(.4,.5,1.4),0x94a3b8,dx,.7,dz);const d=grp(dx,1.6,dz),cap=ga(d,new T.SphereGeometry(1.4,20,10,0,6.283,Math.PI-1.1,1.1),0xe2e8f0,0,.4,0);cap.material.side=DS;cap.rotation.x=-.5;ANIM.push(t=>d.rotation.y=t*.5);ob(dx,dz,1.1);
+const[ax,az]=sl(4);for(let i=0;i<3;i++)B(cyl(.08,.08,3.2,6),0xcbd5e1,ax-.7+i*.7,1.6,az);ob(ax,az,1.1)}
+if(n==3){B(cyl(.7,.9,1),0x475569,0,.5,0);const w=grp(0,1.2,0);ga(w,cyl(1.8,1.8,.2,32),0xcbd5e1,0,0,0);for(let i=-2;i<=2;i++)for(let j=-2;j<=2;j++)if(i*i+j*j<=4)ga(w,box(.45,.05,.45),(i+j)%2?0x1e3a5f:0x14b8a6,i*.62,.12,j*.62);ANIM.push(t=>w.rotation.y=t*.3);ob(0,0,1.9);
+const[fx,fz]=sl(2);B(cyl(1.1,1.3,3,16),0xb45309,fx,1.5,fz);B(new T.ConeGeometry(1.3,1,16),0x7c2d12,fx,3.5,fz);ob(fx,fz,1.4);
+const[cxx,czz]=sl(4);B(box(3,2.4,2),0xe2e8f0,cxx,1.2,czz);B(box(2.2,.9,.05),0x38bdf8,cxx,1.4,czz+1.03);ob(cxx-.8,czz,1.1);ob(cxx+.8,czz,1.1)}
+if(n==4){wire(B(new T.ConeGeometry(1.2,7,4),0x94a3b8,0,3.5,0));B(box(4.2,.2,.2),0x64748b,0,6,0);B(box(3,.2,.2),0x64748b,0,4.8,0);ob(0,0,1.3);
+const[tx,tz]=sl(2);B(box(2,1.5,1.4),0x6b7280,tx,.75,tz);B(box(1.6,.2,1),0xf59e0b,tx,1.6,tz);ob(tx,tz,1.2);
+const[wx,wz]=sl(4);B(cyl(.15,.25,6,8),0xf1f5f9,wx,3,wz);const h=grp(wx,6,wz+.3);ga(h,new T.SphereGeometry(.3,10,8),0xf8fafc,0,0,0);const bl=new T.Group();h.add(bl);for(let i=0;i<3;i++){const p=new T.Group();p.rotation.z=i*2.094;ga(p,box(.25,2.4,.05),0xf8fafc,0,1.2,0);bl.add(p)}ANIM.push(t=>bl.rotation.z=t*1.5);ob(wx,wz,.8)}
+if(n==5){B(cyl(1.1,1.3,.6,16),0x334155,0,.3,0);const g1=grp(0,.6,0);ga(g1,new T.SphereGeometry(.45,12,10),0xdc2626,0,0,0);ga(g1,box(.5,2.2,.5),0xef4444,0,1.1,0);const g2=new T.Group();g2.position.y=2.2;g1.add(g2);ga(g2,new T.SphereGeometry(.4,12,10),0xdc2626,0,0,0);ga(g2,box(.4,.4,2),0xef4444,0,0,1);ga(g2,box(.15,.5,.15),0x1f2937,-.2,-.25,2.05);ga(g2,box(.15,.5,.15),0x1f2937,.2,-.25,2.05);ANIM.push(t=>{g1.rotation.y=Math.sin(t*.7)*1.2;g2.rotation.x=Math.sin(t*1.3)*.3});ob(0,0,1.4);
+const[gx,gz]=sl(2);const gr=B(new T.TorusGeometry(1,.35,8,16),0xf87171,gx,.55,gz);gr.rotation.x=Math.PI/2;ANIM.push(t=>gr.rotation.z=t);ob(gx,gz,1.35);
+const[px,pz]=sl(4);B(cyl(1.4,1.4,.12,24),0xfbbf24,px,.06,pz);const dr=grp(px,3.6,pz);ga(dr,box(.8,.25,.8),0x1f2937,0,0,0);for(const a of[-.5,.5])for(const b of[-.5,.5])ga(dr,cyl(.35,.35,.04,12),0x93c5fd,a,.2,b);ANIM.push(t=>{dr.position.y=.6+3.6+Math.sin(t*2)*.3;dr.rotation.y=t*.4})}
+if(n==6){B(box(2.4,.6,2.4),0x475569,0,.3,0);B(cyl(.25,.4,9),0xf1f5f9,0,5,0);const rs=[6.5,7.5,8.5].map(y=>{const r=B(new T.TorusGeometry(1.4,.06,6,24),0x22d3ee,0,y,0);r.rotation.x=Math.PI/2;return r});ANIM.push(t=>rs.forEach((r,i)=>r.scale.setScalar(.7+.3*Math.abs(Math.sin(t*2-i*.6)))));ob(0,0,1.7);
+const[dx,dz]=sl(2);B(cyl(.15,.15,1.4,8),0x94a3b8,dx,.7,dz);const c=B(new T.SphereGeometry(1.2,18,10,0,6.283,Math.PI-1.1,1.1),0xe2e8f0,dx,2,dz);c.material.side=DS;c.rotation.x=-.8;ob(dx,dz,1.1);
+const[ax,az]=sl(4);B(cyl(.08,.08,4,6),0xef4444,ax,2,az);ob(ax,az,.7)}
+}
+function free(x,z,self){return ok(x,z)&&ENT.every(e=>e===self||Math.hypot(e.position.x-x,e.position.z-z)>1.2)}
+Z.forEach((z,n)=>{const R=n?R1:R0;
+add(new THREE.CylinderGeometry(R+.9,R+.9,1.1,6),0xf2dfa7,z.x,-.1,z.z);
+add(new THREE.CylinderGeometry(R,R,1,6),0x6cc26a,z.x,0,z.z);
+add(new THREE.CylinderGeometry(R-.9,R-.9,.12,6),z.c,z.x,.56,z.z).material.color.lerp(new THREE.Color(0xffffff),.35);
+build(z,n);
+const l=label(z.i+' '+z.k+(n?'組':''),n?1:1.2);l.position.set(z.x,n?10.8:8.6,z.z);S.add(l)});
+for(let k=0;k<6;k++){const [dx,dz]=DIR(k),L=DD-AP0-AP1,m=AP0+L/2;
+const b=add(new THREE.BoxGeometry(3.4,.3,L+.4),0xb98a5a,dx*m,.32,dz*m);b.rotation.y=rad(30+60*k);
+const v=rad(60*k);for(const sg of[1,-1])add(new THREE.CylinderGeometry(.18,.18,1,6),0x7a5230,dx*m+dz*1.6*sg,1,dz*m-dx*1.6*sg);
+add(new THREE.CylinderGeometry(.2,.3,1.2,6),0x7a5230,Math.sin(v)*8.6,1.1,Math.cos(v)*8.6);add(new THREE.ConeGeometry(1.2,2.8,7),0x2f8f4e,Math.sin(v)*8.6,3.1,Math.cos(v)*8.6)}
+function person(shirt,hair=0x3b2a20){const g=new THREE.Group();add(new THREE.CylinderGeometry(.55,.65,1.4,10),shirt,0,1.2,0,g);add(new THREE.SphereGeometry(.5,14,12),0xffd9b8,0,2.3,0,g);add(new THREE.SphereGeometry(.53,14,8,0,6.28,0,1.6),hair,0,2.35,0,g);g.userData.shirt=g.children[0];add(new THREE.BoxGeometry(.12,.12,.1),0x222222,-.17,2.35,.46,g);add(new THREE.BoxGeometry(.12,.12,.1),0x222222,.17,2.35,.46,g);S.add(g);return g}
+const chair=person(0x1f4e79,0x9aa0a8);chair.position.set(-4,0,-3);chair.scale.setScalar(1.15);
+const lc=label('譚仕煒（系主任）',.8,9);lc.position.set(-4,4.6,-3);S.add(lc);
+const me=person(YC[0]);me.position.set(0,0,5);
+const mlab=label('大一',.45);mlab.position.y=3.5;me.add(mlab);
+function setAvatar(){me.userData.shirt.material.color.set(YC[yr]);const c=mlab.material.map.image,x=c.getContext('2d');x.clearRect(0,0,512,128);x.font='bold 54px sans-serif';x.textAlign='center';x.lineWidth=10;x.strokeStyle='#0b4a66';x.strokeText(YN[yr],256,80);x.fillStyle='#fff';x.fillText(YN[yr],256,80);mlab.material.map.needsUpdate=true;document.querySelectorAll('#hud [data-a]').forEach((b,i)=>b.setAttribute('aria-pressed',i===yr))}
+$('#hud').innerHTML=YN.map((n,i)=>`<button aria-pressed="${i===0}" data-a="${i}">${n}</button>`).join('')+'<button data-go="1">回中央</button>';
+$('#hud').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.a){yr=+b.dataset.a;setAvatar();if(cur===Z[0])req()}else{me.position.set(0,0,5);stopGo()}};
+// ---- walkable: hex islands + bridges
+const inHex=(x,z,cx,cz,ap)=>{for(let j=0;j<6;j++){const [a,b]=DIR(j);if((x-cx)*a+(z-cz)*b>ap)return false}return true};
+function ok(x,z){if(OB.some(o=>Math.hypot(o.x-x,o.z-z)<o.r+.4))return false;return ok0(x,z)}
+function ok0(x,z){if(inHex(x,z,0,0,AP0-.3))return true;for(let k=0;k<6;k++){const [a,b]=DIR(k),u=x*a+z*b,v=x*b-z*a;if(u>AP0-1&&u<DD-AP1+1&&Math.abs(v)<1.6)return true;if(inHex(x,z,Z[k+1].x,Z[k+1].z,AP1-.3))return true}return false}
+
+const HIT=[];function hitbox(o,u){const m=add(new THREE.CylinderGeometry(1.4,1.4,3.8,8),0xffffff,0,1.9,0,o);m.material.transparent=true;m.material.opacity=0;m.material.depthWrite=false;m.userData=u;HIT.push(m)}
+hitbox(chair,{chair:1});
+const NP=[],ENT=[me,chair];
+G.forEach((g,gi)=>{const arr=LB[g.k]||[],z=Z[gi+1];arr.forEach((p,j)=>{const o=person(g.c,[0x2b1d14,0x3b2a20,0x1c1c1c][j%3]);let a=j/arr.length*6.283+.5;o.position.set(z.x,0,z.z);for(let k=0;k<80;k++){const rr=4.8+(k%5)*.6,x=z.x+Math.cos(a)*rr,y=z.z+Math.sin(a)*rr;if(inHex(x,y,z.x,z.z,AP1-1.5)&&free(x,y,o)){o.position.set(x,0,y);break}a+=.55}ENT.push(o);const nl=label(p.n,.55,6);nl.position.y=3.5;o.add(nl);hitbox(o,{p,gi});NP.push({o,z,ap:AP1,sp:2.2,wait:Math.random()*2,t:null,ph:0})})});
+NP.push({o:chair,z:Z[0],ap:AP0,sp:2.6,wait:.5,t:null,ph:0,face:1});
+function wander(w,dt){const o=w.o,z=w.z;
+if(w.wait>0){w.wait-=dt;o.position.y=0;if(w.face)o.rotation.y=Math.atan2(me.position.x-o.position.x,me.position.z-o.position.z);if(w.wait<=0){let x,y,k=0;do{x=z.x+(Math.random()-.5)*2*w.ap;y=z.z+(Math.random()-.5)*2*w.ap;k++}while(k<40&&(!inHex(x,y,z.x,z.z,w.ap-1.5)||!ok(x,y)));w.t=[x,y]}return}
+const ex=w.t[0]-o.position.x,ez=w.t[1]-o.position.z,d=Math.hypot(ex,ez);if(d<.3){w.wait=1.5+Math.random()*3;return}
+const nx=o.position.x+ex/d*w.sp*dt,nz=o.position.z+ez/d*w.sp*dt;
+if(free(nx,nz,o)){o.position.x=nx;o.position.z=nz;o.rotation.y=Math.atan2(ex,ez);w.ph+=dt*10;o.position.y=Math.abs(Math.sin(w.ph))*.2}else{w.wait=.25;w.face=w.face}}
+// ---- control
+let tgt=null,cur=null;
+const ray=new THREE.Raycaster(),pl=new THREE.Plane(new THREE.Vector3(0,1,0),-.5);
+cv.addEventListener('pointerdown',e=>{const r=cv.getBoundingClientRect();ray.setFromCamera({x:(e.clientX-r.left)/r.width*2-1,y:-(e.clientY-r.top)/r.height*2+1},cam);const h=ray.intersectObjects(HIT,false)[0];if(h){const u=h.object.userData;lab(u.chair?CH:u.p,u.gi);return}const p=new THREE.Vector3();if(ray.ray.intersectPlane(pl,p)&&ok(p.x,p.z)){rp=0;stk=0;if(!setGoal(p.x,p.z))stopGo()}});
+
+// ---- pathfinding (A* on a 0.5 grid, then line-of-sight smoothing)
+const GS=.5,GO=42,GW=Math.round(GO*2/GS)+1;
+let DYN=true;const wk=(x,z)=>ok(x,z)&&(!DYN||ENT.every(e=>e===me||Math.hypot(e.position.x-x,e.position.z-z)>1.1));
+function los(a,b){const d=Math.hypot(b[0]-a[0],b[1]-a[1]),n=Math.ceil(d/.25);for(let i=1;i<=n;i++){const t=i/n;if(!wk(a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t))return false}return true}
+function findPath(sx,sz,gx,gz){
+const cell=(x,z)=>[Math.round((x+GO)/GS),Math.round((z+GO)/GS)],pos=(i,j)=>[i*GS-GO,j*GS-GO];
+const [si,sj]=cell(sx,sz),[gi,gj]=cell(gx,gz);if(!wk(gx,gz))return null;
+if(los([sx,sz],[gx,gz]))return [[gx,gz]];
+const key=(i,j)=>j*GW+i,g=new Map(),from=new Map(),H=[];
+const push=(f,k)=>{H.push([f,k]);let i=H.length-1;while(i>0){const p=(i-1)>>1;if(H[p][0]<=H[i][0])break;[H[p],H[i]]=[H[i],H[p]];i=p}};
+const pop=()=>{const t=H[0],l=H.pop();if(H.length){H[0]=l;let i=0;for(;;){let a=2*i+1,b=a+1,m=i;if(a<H.length&&H[a][0]<H[m][0])m=a;if(b<H.length&&H[b][0]<H[m][0])m=b;if(m==i)break;[H[m],H[i]]=[H[i],H[m]];i=m}}return t};
+const hh=(i,j)=>{const dx=Math.abs(i-gi),dy=Math.abs(j-gj);return Math.max(dx,dy)+.414*Math.min(dx,dy)};
+const sk=key(si,sj),gk=key(gi,gj);g.set(sk,0);push(hh(si,sj),sk);let it=0,found=false;
+const ok2=(i,j)=>{if(i<0||j<0||i>=GW||j>=GW)return false;const [x,z]=pos(i,j);return wk(x,z)};
+while(H.length&&it++<40000){const [,k]=pop(),i=k%GW,j=(k-i)/GW;if(k==gk){found=true;break}
+for(let di=-1;di<=1;di++)for(let dj=-1;dj<=1;dj++){if(!di&&!dj)continue;const ni=i+di,nj=j+dj,nk=key(ni,nj);if(!ok2(ni,nj))continue;if(di&&dj&&(!ok2(i+di,j)||!ok2(i,j+dj)))continue;const c=g.get(k)+(di&&dj?1.414:1);if(!g.has(nk)||c<g.get(nk)){g.set(nk,c);from.set(nk,k);push(c+hh(ni,nj),nk)}}}
+if(!found)return null;
+let pts=[],k=gk;while(k!=sk){const i=k%GW,j=(k-i)/GW;pts.push(pos(i,j));k=from.get(k)}pts.reverse();pts[pts.length-1]=[gx,gz];
+const out=[];let cur=[sx,sz],idx=0;while(idx<pts.length){let far=idx;for(let q=pts.length-1;q>idx;q--)if(los(cur,pts[q])){far=q;break}out.push(pts[far]);cur=pts[far];idx=far+1}
+return out}
+let PATH=[],GOAL=null,stk=0,rp=0;
+function setGoal(x,z){DYN=true;let p=findPath(me.position.x,me.position.z,x,z);if(!p){DYN=false;p=findPath(me.position.x,me.position.z,x,z);DYN=true}if(!p)return false;GOAL=[x,z];PATH=p.map(a=>new THREE.Vector3(a[0],.5,a[1]));tgt=PATH.shift()||null;return true}
+function stopGo(){tgt=null;PATH=[];GOAL=null;stk=0;rp=0}
+function resize(){const w=cv.clientWidth,h=cv.clientHeight;R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();
+const clk=new THREE.Clock();let ph=0;const cw={wait:.5,t:[0,0],ph:0};
+function loop(){
+const dt=Math.min(clk.getDelta(),.05);let dx=0,dz=0;
+if(tgt){const v=tgt.clone().sub(me.position);v.y=0;if(v.length()<.4){tgt=PATH.shift()||null;if(!tgt)GOAL=null}else{dx=v.x;dz=v.z}}
+const l=Math.hypot(dx,dz);let moved=false;
+if(l>.01){dx/=l;dz/=l;const p=me.position,sx=p.x+dx*9*dt,sz=p.z+dz*9*dt;
+if(free(sx,sz,me)){p.x=sx;p.z=sz;moved=true}else if(free(sx,p.z,me)){p.x=sx;moved=true}else if(free(p.x,sz,me)){p.z=sz;moved=true}
+me.rotation.y=Math.atan2(dx,dz)}
+if(tgt&&!moved){stk+=dt;if(stk>.5){stk=0;if(++rp>3||!GOAL||!setGoal(GOAL[0],GOAL[1]))stopGo()}}else if(moved)stk=0;
+if(moved){ph+=dt*14;me.position.y=Math.abs(Math.sin(ph))*.25}else me.position.y=0;
+lc.position.set(chair.position.x,4.6,chair.position.z);
+NP.forEach(w=>wander(w,dt));
+let hit=null;Z.forEach((z,n)=>{if(inHex(me.position.x,me.position.z,z.x,z.z,(n?AP1:AP0)-.8))hit=z});
+if(hit!==cur){cur=hit;if(hit)enter(hit);else $('#where').textContent='🌉 橋上'}
+const cx=me.position.x*.85,cz=me.position.z*.85;cam.position.lerp(new THREE.Vector3(cx,19,cz+20),.08);cam.lookAt(cx,0,cz-1);
+ANIM.forEach(f=>f(clk.elapsedTime));R.render(S,cam);requestAnimationFrame(loop)}
+function welcome(){$('#panel').innerHTML='<h2>歡迎來到蜂巢電機島</h2><div id="say">譚仕煒（系主任）導覽｜中間的六角形大島是必修課區，可以隨意走動，系主任也會在島上走動，點選他可以看他帶領的實驗室。六邊各有一座橋，通往六個組別的島嶼。</div><p class="note">直接點地面，小人就會走過去；各島上的老師也會四處走動，點選小人就能看他們的實驗室簡介。</p>'}
+setAvatar();welcome();
+loop();
+</script>
+</body>
+</html>
